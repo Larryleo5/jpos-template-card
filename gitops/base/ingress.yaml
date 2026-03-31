@@ -1,0 +1,24 @@
+# Requires AWS Load Balancer Controller (installed by CDK EksGitOpsStack).
+# 入站：公网 ALB -> Service -> Pod。出站：节点在公有子网经 Internet Gateway 访问 ECR/API 等。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-app
+  labels:
+    app: demo-app
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-app
+                port:
+                  number: 80

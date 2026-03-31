@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: default
+resources:
+  - ../../base
+# Replace with your account, region, and repository name (must match EcrStack).
+images:
+  - name: demo/app
+    newName: "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/app-demo"
+    newTag: "latest"

@@ -1,0 +1,24 @@
+# kubectl apply -n argocd -f gitops/argocd/application.yaml
+# 默认同步 https://github.com/Larryleo5/jpos-template-card 的 gitops/overlays/prod（须先将本 gitops/ 目录推送到该仓）
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Larryleo5/jpos-template-card.git
+    targetRevision: selfTest
+    path: gitops/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+    automated:
+      prune: true
+      selfHeal: false
