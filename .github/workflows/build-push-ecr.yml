@@ -15,6 +15,7 @@ on:
     branches:
       - main
       - master
+      - selfTest
     tags:
       - 'v*'
   workflow_dispatch:
