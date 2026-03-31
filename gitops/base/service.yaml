@@ -4,11 +4,17 @@ metadata:
   name: demo-app
   labels:
     app: demo-app
+  annotations:
+    # ISO8583 TCP service: expose with NLB instead of HTTP ALB ingress.
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: demo-app
   ports:
-    - name: http
-      port: 80
-      targetPort: http
+    - name: iso8583
+      protocol: TCP
+      port: 8080
+      targetPort: 8080

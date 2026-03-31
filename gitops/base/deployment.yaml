@@ -21,10 +21,10 @@ spec:
           # Overridden in overlays/prod via kustomize images
           image: demo/app:placeholder
           ports:
-            - name: http
+            - name: iso8583
               containerPort: 8080
           readinessProbe:
             tcpSocket:
-              port: http
+              port: iso8583
             initialDelaySeconds: 3
             periodSeconds: 5
