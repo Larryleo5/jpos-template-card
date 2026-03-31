@@ -6,5 +6,5 @@ resources:
 # Replace with your account, region, and repository name (must match EcrStack).
 images:
   - name: demo/app
-    newName: "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/app-demo"
+    newName: "483510445378.dkr.ecr.ap-southeast-1.amazonaws.com/app-demo"
     newTag: "latest"
