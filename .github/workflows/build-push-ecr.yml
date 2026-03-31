@@ -16,7 +16,7 @@ on:
     branches:
       - main
       - master
-      - selfTest # 仍会推 sha 标签；:latest 仅 main/master（见下方 run 脚本）
+      - selfTest # 会推 sha 标签；并与 main/master 一样推 :latest（见下方 run 脚本）
     tags:
       - 'v*'
   workflow_dispatch:
@@ -73,7 +73,7 @@ jobs:
           REF_NAME="${{ github.ref_name }}"
           GREF="${{ github.ref }}"
 
-          if [ "$REF_TYPE" = "branch" ] && { [ "$GREF" = "refs/heads/main" ] || [ "$GREF" = "refs/heads/master" ]; }; then
+          if [ "$REF_TYPE" = "branch" ] && { [ "$GREF" = "refs/heads/main" ] || [ "$GREF" = "refs/heads/master" ] || [ "$GREF" = "refs/heads/selfTest" ]; }; then
             docker tag "$REGISTRY/$REPOSITORY:$SHA_TAG" "$REGISTRY/$REPOSITORY:latest"
             docker push "$REGISTRY/$REPOSITORY:latest"
             echo "Also pushed :latest"
@@ -85,6 +85,7 @@ jobs:
             echo "Also pushed :$REF_NAME"
           fi
 
+          # 需要 IAM ecr:DescribeImages（CDK GitHubOidcStack 推送角色已包含；勿删权限与脚本不同步）
           DIGEST=$(aws ecr describe-images \
             --repository-name "$REPOSITORY" \
             --image-ids imageTag="$SHA_TAG" \
