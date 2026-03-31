@@ -16,7 +16,7 @@ on:
     branches:
       - main
       - master
-      - selfTest # 会推 sha 标签；并与 main/master 一样推 :latest（见下方 run 脚本）
+      - selfTest # 仅推 :latest（不推 sha 标签，见下方 run 脚本）
     tags:
       - 'v*'
   workflow_dispatch:
@@ -58,22 +58,30 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2.1.1
 
-      - name: Build and push (immutable sha + branch/tag aliases)
+      - name: Build and push (branch/tag aliases)
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           REPOSITORY: ${{ vars.ECR_REPOSITORY_NAME }}
         run: |
           set -euo pipefail
           test -n "${REPOSITORY:-}" || { echo "Set Actions variable ECR_REPOSITORY_NAME"; exit 1; }
-          SHA_TAG="${{ github.sha }}"
-          docker build -t "$REGISTRY/$REPOSITORY:$SHA_TAG" .
-          docker push "$REGISTRY/$REPOSITORY:$SHA_TAG"
-
           REF_TYPE="${{ github.ref_type }}"
           REF_NAME="${{ github.ref_name }}"
           GREF="${{ github.ref }}"
+          SHA_TAG="${{ github.sha }}"
+          DIGEST_TAG="$SHA_TAG"
 
-          if [ "$REF_TYPE" = "branch" ] && { [ "$GREF" = "refs/heads/main" ] || [ "$GREF" = "refs/heads/master" ] || [ "$GREF" = "refs/heads/selfTest" ]; }; then
+          if [ "$GREF" = "refs/heads/selfTest" ]; then
+            docker build -t "$REGISTRY/$REPOSITORY:latest" .
+            docker push "$REGISTRY/$REPOSITORY:latest"
+            echo "Pushed :latest only for selfTest"
+            DIGEST_TAG="latest"
+          else
+            docker build -t "$REGISTRY/$REPOSITORY:$SHA_TAG" .
+            docker push "$REGISTRY/$REPOSITORY:$SHA_TAG"
+          fi
+
+          if [ "$REF_TYPE" = "branch" ] && { [ "$GREF" = "refs/heads/main" ] || [ "$GREF" = "refs/heads/master" ]; }; then
             docker tag "$REGISTRY/$REPOSITORY:$SHA_TAG" "$REGISTRY/$REPOSITORY:latest"
             docker push "$REGISTRY/$REPOSITORY:latest"
             echo "Also pushed :latest"
@@ -88,7 +96,7 @@ jobs:
           # 需要 IAM ecr:DescribeImages（CDK GitHubOidcStack 推送角色已包含；勿删权限与脚本不同步）
           DIGEST=$(aws ecr describe-images \
             --repository-name "$REPOSITORY" \
-            --image-ids imageTag="$SHA_TAG" \
+            --image-ids imageTag="$DIGEST_TAG" \
             --query 'imageDetails[0].imageDigest' \
             --output text)
           echo "IMAGE_URI=$REGISTRY/$REPOSITORY@$DIGEST" >> "$GITHUB_ENV"
