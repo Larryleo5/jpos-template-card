@@ -23,8 +23,15 @@ repositories {
 
 dependencies {
     implementation 'org.jpos:jpos:3.0.1-SNAPSHOT'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
 
 jpos {
     distDir.set('src/dist')
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty 'q2.port', (project.findProperty('q2Port') ?: '8080')
 }

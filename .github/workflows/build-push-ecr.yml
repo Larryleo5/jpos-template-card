@@ -1,0 +1,83 @@
+# 本文件用于放在「业务仓库」中，例如 GitHub 上的 jpos-template-card。
+# 勿放在仅部署 CDK 的仓库里（除非该仓库也要构建镜像）。
+#
+# 使用步骤：
+# 1) 将本文件复制到 jpos-template-card 仓库：.github/workflows/build-push-ecr.yml
+# 2) AWS CDK 部署时 githubImageRepo（或 githubRepo）必须与 jpos-template-card 一致，否则 OIDC 无法 AssumeRole
+# 3) 在 jpos-template-card 配置 Secrets / Variables（见 infra 仓库 docs/OPERATIONS.md）
+#
+# OIDC 信任：repo:ORG/jpos-template-card:ref:*（默认）或 CDK 中 githubRefExact 收紧
+# Secrets: AWS_ROLE_TO_ASSUME | Variables: AWS_REGION, ECR_REPOSITORY_NAME
+name: Build and push image to ECR
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push (immutable sha + branch/tag aliases)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY_NAME }}
+        run: |
+          set -euo pipefail
+          test -n "${REPOSITORY:-}" || { echo "Set Actions variable ECR_REPOSITORY_NAME"; exit 1; }
+          SHA_TAG="${{ github.sha }}"
+          docker build -t "$REGISTRY/$REPOSITORY:$SHA_TAG" .
+          docker push "$REGISTRY/$REPOSITORY:$SHA_TAG"
+
+          REF_TYPE="${{ github.ref_type }}"
+          REF_NAME="${{ github.ref_name }}"
+          GREF="${{ github.ref }}"
+
+          if [ "$REF_TYPE" = "branch" ] && { [ "$GREF" = "refs/heads/main" ] || [ "$GREF" = "refs/heads/master" ]; }; then
+            docker tag "$REGISTRY/$REPOSITORY:$SHA_TAG" "$REGISTRY/$REPOSITORY:latest"
+            docker push "$REGISTRY/$REPOSITORY:latest"
+            echo "Also pushed :latest"
+          fi
+
+          if [ "$REF_TYPE" = "tag" ]; then
+            docker tag "$REGISTRY/$REPOSITORY:$SHA_TAG" "$REGISTRY/$REPOSITORY:$REF_NAME"
+            docker push "$REGISTRY/$REPOSITORY:$REF_NAME"
+            echo "Also pushed :$REF_NAME"
+          fi
+
+          DIGEST=$(aws ecr describe-images \
+            --repository-name "$REPOSITORY" \
+            --image-ids imageTag="$SHA_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+          echo "IMAGE_URI=$REGISTRY/$REPOSITORY@$DIGEST" >> "$GITHUB_ENV"
+          echo "Pushed $REGISTRY/$REPOSITORY@$DIGEST"
+
+      - name: Summary
+        run: |
+          echo "### Image (digest)" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"

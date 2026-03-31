@@ -49,3 +49,29 @@ gradle install
 gradle tasks
 ````
 
+### 8583 ASCII Q2 server (port 8080)
+The template now includes a Q2 `QServer` deployment at `src/dist/deploy/20_ascii_8583_server.xml`.
+It listens on `8080` using `org.jpos.iso.channel.ASCIIChannel` + `XMLPackager` and replies with:
+- response MTI (for example `0200 -> 0210`)
+- field `39=00`
+
+### Run and test the server
+1. Install app:
+````
+./gradlew installApp
+````
+2. Start Q2:
+````
+./build/install/jpos-template-card/bin/q2
+````
+3. In another terminal, run the integration test:
+````
+./gradlew test --tests org.jpos.template.iso.AsciiQ2ServerIntegrationTest
+````
+
+### Build and run Docker image
+````
+docker build -t jpos-template-card:local .
+docker run --rm -p 8080:8080 jpos-template-card:local
+````
+

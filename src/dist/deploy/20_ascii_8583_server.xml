@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<server class="org.jpos.q2.iso.QServer" logger="Q2" name="ascii-8583-server">
+  <attr name="port" type="java.lang.Integer">8080</attr>
+  <channel
+      class="org.jpos.iso.channel.ASCIIChannel"
+      packager="org.jpos.iso.packager.XMLPackager"
+      logger="Q2"
+      realm="ascii-8583-server.channel" />
+  <request-listener
+      class="org.jpos.template.iso.AsciiEchoRequestListener"
+      logger="Q2"
+      realm="ascii-8583-server.listener" />
+</server>
