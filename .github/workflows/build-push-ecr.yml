@@ -7,7 +7,8 @@
 # 3) 在 jpos-template-card 配置 Secrets / Variables（见 infra 仓库 docs/OPERATIONS.md）
 #
 # OIDC 信任：repo:ORG/jpos-template-card:ref:*（默认）或 CDK 中 githubRefExact 收紧
-# Secrets: AWS_ROLE_TO_ASSUME | Variables: AWS_REGION, ECR_REPOSITORY_NAME
+# Secrets: AWS_ROLE_TO_ASSUME (repository secret)
+# Variables: AWS_REGION, ECR_REPOSITORY_NAME (repository variables — not environment-only unless you add `environment:` to the job)
 name: Build and push image to ECR
 
 on:
@@ -15,7 +16,7 @@ on:
     branches:
       - main
       - master
-      - selfTest
+      - selfTest # 仍会推 sha 标签；:latest 仅 main/master（见下方 run 脚本）
     tags:
       - 'v*'
   workflow_dispatch:
@@ -26,22 +27,36 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
+  # 可选：在官方把 Node 24 设为默认前，减少 Node 20 弃用噪音（与升级后的 action 二选一即可）
+  # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # v6+ 使用较新 Node，避免 “Node.js 20 actions are deprecated” 针对 checkout 的告警
+      - uses: actions/checkout@v6
+
+      - name: Check required repository variables
+        run: |
+          if [ -z "${{ vars.AWS_REGION }}" ]; then
+            echo "::error::在仓库 Settings → Variables 中设置 AWS_REGION（与 ECR/EKS 区域一致）"
+            exit 1
+          fi
+          if [ -z "${{ vars.ECR_REPOSITORY_NAME }}" ]; then
+            echo "::error::在仓库 Settings → Variables 中设置 ECR_REPOSITORY_NAME（与 CDK EcrStack 输出一致）"
+            exit 1
+          fi
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@v2.1.1
 
       - name: Build and push (immutable sha + branch/tag aliases)
         env:
