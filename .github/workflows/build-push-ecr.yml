@@ -19,11 +19,14 @@ on:
       - selfTest # 仅推 :latest（不推 sha 标签，见下方 run 脚本）
     tags:
       - 'v*'
+    paths-ignore:
+      - 'gitops/**'
   workflow_dispatch:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
@@ -100,9 +103,41 @@ jobs:
             --query 'imageDetails[0].imageDigest' \
             --output text)
           echo "IMAGE_URI=$REGISTRY/$REPOSITORY@$DIGEST" >> "$GITHUB_ENV"
+          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          echo "IMAGE_NEW_NAME=$REGISTRY/$REPOSITORY" >> "$GITHUB_ENV"
           echo "Pushed $REGISTRY/$REPOSITORY@$DIGEST"
 
       - name: Summary
         run: |
           echo "### Image (digest)" >> "$GITHUB_STEP_SUMMARY"
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Propose GitOps digest update (PR)
+        if: github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_DIGEST: ${{ env.IMAGE_DIGEST }}
+          IMAGE_NEW_NAME: ${{ env.IMAGE_NEW_NAME }}
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/gitops-bump-digest.py ]; then
+            echo "No scripts/gitops-bump-digest.py — skip PR"
+            exit 0
+          fi
+          python3 scripts/gitops-bump-digest.py
+          if git diff --quiet; then
+            echo "GitOps overlay already matches digest; nothing to PR"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="ci/gitops-digest-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+          git add gitops/overlays/prod/kustomization.yaml
+          git commit -m "chore(gitops): bump image digest [skip ci]"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH" \
+            --title "chore(gitops): bump image digest" \
+            --body "Automated after image push to \`${IMAGE_NEW_NAME}@${IMAGE_DIGEST}\` on branch \`${GITHUB_REF_NAME}\`."

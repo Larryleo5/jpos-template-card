@@ -21,8 +21,11 @@ repositories {
     mavenLocal()
 }
 
+ext.awsSdkVersion = '2.29.51'
+
 dependencies {
     implementation 'org.jpos:jpos:3.0.1-SNAPSHOT'
+    implementation "software.amazon.awssdk:paymentcryptographydata:${awsSdkVersion}"
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
@@ -32,6 +35,10 @@ jpos {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        if (!project.hasProperty('integrationTests')) {
+            excludeTags 'integration'
+        }
+    }
     systemProperty 'q2.port', (project.findProperty('q2Port') ?: '8080')
 }

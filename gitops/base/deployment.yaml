@@ -20,6 +20,29 @@ spec:
         - name: app
           # Overridden in overlays/prod via kustomize images
           image: demo/app:placeholder
+          env:
+            # APC region resolution fallback in code:
+            # APC_REGION -> AWS_REGION -> AWS_DEFAULT_REGION -> ap-southeast-1
+            - name: APC_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: apc-config
+                  key: APC_REGION
+                  optional: true
+            # Example: alias/cde-demo-pin
+            - name: APC_PIN_KEY_ALIAS
+              valueFrom:
+                secretKeyRef:
+                  name: apc-config
+                  key: APC_PIN_KEY_ALIAS
+                  optional: true
+            # Optional: if omitted, code falls back to APC_PIN_KEY_ALIAS
+            - name: APC_MAC_KEY_ALIAS
+              valueFrom:
+                secretKeyRef:
+                  name: apc-config
+                  key: APC_MAC_KEY_ALIAS
+                  optional: true
           ports:
             - name: iso8583
               containerPort: 8080

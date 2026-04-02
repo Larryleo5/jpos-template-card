@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.jpos.iso.ISOMsg;
 import org.jpos.iso.channel.ASCIIChannel;
 import org.jpos.iso.packager.XMLPackager;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+@Tag("integration")
 class AsciiQ2ServerIntegrationTest {
     @Test
     void shouldReceiveApprovedResponseFromQ2AsciiServer() throws Exception {

@@ -3,8 +3,8 @@ kind: Kustomization
 namespace: default
 resources:
   - ../../base
-# Replace with your account, region, and repository name (must match EcrStack).
+# CI（build-push-ecr.yml）在推镜像后会自动提 PR 更新 newName 与 digest；亦可手工改。
 images:
   - name: demo/app
-    newName: "483510445378.dkr.ecr.ap-southeast-1.amazonaws.com/app-demo"
-    newTag: "latest"
+    newName: "483510445378.dkr.ecr.REPLACE_REGION.amazonaws.com/REPLACE_REPO"
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
