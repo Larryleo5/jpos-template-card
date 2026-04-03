@@ -8,7 +8,12 @@
 #
 # OIDC 信任：repo:ORG/jpos-template-card:ref:*（默认）或 CDK 中 githubRefExact 收紧
 # Secrets: AWS_ROLE_TO_ASSUME (repository secret)
-# Variables: AWS_REGION, ECR_REPOSITORY_NAME (repository variables — not environment-only unless you add `environment:` to the job)
+# Variables: AWS_REGION, ECR_REPOSITORY_NAME (required)
+# Optional Variables for APC Secret sync:
+# - EKS_STACK_NAME (default EksGitOpsStack)
+# - PAYMENT_CRYPTO_STACK_NAME (default PaymentCryptoStack)
+# - APC_SECRET_NAMESPACE (default default)
+# - APC_SECRET_NAME (default apc-config)
 name: Build and push image to ECR
 
 on:
@@ -106,6 +111,50 @@ jobs:
           echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
           echo "IMAGE_NEW_NAME=$REGISTRY/$REPOSITORY" >> "$GITHUB_ENV"
           echo "Pushed $REGISTRY/$REPOSITORY@$DIGEST"
+
+      - name: Setup kubectl
+        if: github.ref_type == 'branch'
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.0
+
+      - name: Sync APC secret to EKS
+        if: github.ref_type == 'branch'
+        env:
+          EKS_STACK_NAME: ${{ vars.EKS_STACK_NAME }}
+          PAYMENT_CRYPTO_STACK_NAME: ${{ vars.PAYMENT_CRYPTO_STACK_NAME }}
+          APC_SECRET_NAMESPACE: ${{ vars.APC_SECRET_NAMESPACE }}
+          APC_SECRET_NAME: ${{ vars.APC_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+          EKS_STACK_NAME="${EKS_STACK_NAME:-EksGitOpsStack}"
+          PAYMENT_CRYPTO_STACK_NAME="${PAYMENT_CRYPTO_STACK_NAME:-PaymentCryptoStack}"
+          APC_SECRET_NAMESPACE="${APC_SECRET_NAMESPACE:-default}"
+          APC_SECRET_NAME="${APC_SECRET_NAME:-apc-config}"
+
+          CLUSTER_NAME="$(aws cloudformation describe-stacks \
+            --stack-name "$EKS_STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue" \
+            --output text)"
+          PIN_KEY_ALIAS="$(aws cloudformation describe-stacks \
+            --stack-name "$PAYMENT_CRYPTO_STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='PaymentCryptographyPinKeyAlias'].OutputValue" \
+            --output text)"
+
+          test -n "$CLUSTER_NAME" && [ "$CLUSTER_NAME" != "None" ] || { echo "::error::ClusterName output not found in $EKS_STACK_NAME"; exit 1; }
+          test -n "$PIN_KEY_ALIAS" && [ "$PIN_KEY_ALIAS" != "None" ] || { echo "::error::PaymentCryptographyPinKeyAlias output not found in $PAYMENT_CRYPTO_STACK_NAME"; exit 1; }
+
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+          kubectl create namespace "$APC_SECRET_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic "$APC_SECRET_NAME" \
+            -n "$APC_SECRET_NAMESPACE" \
+            --from-literal=APC_REGION="$AWS_REGION" \
+            --from-literal=APC_PIN_KEY_ALIAS="$PIN_KEY_ALIAS" \
+            --from-literal=APC_MAC_KEY_ALIAS="$PIN_KEY_ALIAS" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl get secret "$APC_SECRET_NAME" -n "$APC_SECRET_NAMESPACE" -o yaml > /dev/null
+          echo "APC secret synced: $APC_SECRET_NAMESPACE/$APC_SECRET_NAME (PIN alias: $PIN_KEY_ALIAS)"
 
       - name: Summary
         run: |
