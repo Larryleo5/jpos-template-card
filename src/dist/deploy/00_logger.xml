@@ -2,6 +2,14 @@
 
 <logger name="Q2" class="org.jpos.q2.qbean.LoggerAdaptor">
   <property name="redirect" value="stdout, stderr" />
+    <!--
+    Flatten multi-line XML LogEvent dump to a single line before printing to stdout.
+    This avoids CloudWatch line-splitting and makes Insights queries deterministic.
+  -->
+  <log-listener class="org.jpos.util.FlatLogListener">
+    <property name="combine-spaces" value="false" />
+    <property name="newline-at-end" value="true" />
+  </log-listener>
   <log-listener class="org.jpos.util.SimpleLogListener" />
   <log-listener class="org.jpos.util.BufferedLogListener">
     <property name="max-size" value="100" />
@@ -58,4 +66,3 @@
     -->
   </log-listener>
 </logger>
-
