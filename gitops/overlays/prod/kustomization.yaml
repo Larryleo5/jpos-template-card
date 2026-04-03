@@ -9,4 +9,4 @@ resources:
 images:
   - name: demo/app
     newName: "483510445378.dkr.ecr.ap-southeast-1.amazonaws.com/app-demo"
-    digest: sha256:80e77cc08a4b31090de6f55d99265d0fa05fd4be082585f1037d4627825e6f0d
+    digest: sha256:bede513be0ac7dcf5dad832209dfd4c7b899c4b0cbf52b2c6149cdd783c533f1
