@@ -49,5 +49,5 @@ spec:
           readinessProbe:
             tcpSocket:
               port: iso8583
-            initialDelaySeconds: 3
-            periodSeconds: 5
+            initialDelaySeconds: 30
+            periodSeconds: 15
