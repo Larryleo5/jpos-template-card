@@ -3,7 +3,9 @@ kind: Kustomization
 namespace: default
 resources:
   - ../../base
-# CI（build-push-ecr.yml）在推镜像后会自动提 PR 更新 newName 与 digest；亦可手工改。
+# CI（build-push-ecr.yml）在推镜像后会自动更新 newName 与 digest：
+# - selfTest：直接提交到 selfTest（供 Argo 立即感知）
+# - main/master：创建 PR 供评审合并
 images:
   - name: demo/app
     newName: "483510445378.dkr.ecr.ap-southeast-1.amazonaws.com/app-demo"

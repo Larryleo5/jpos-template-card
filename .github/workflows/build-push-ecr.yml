@@ -112,7 +112,7 @@ jobs:
           echo "### Image (digest)" >> "$GITHUB_STEP_SUMMARY"
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Propose GitOps digest update (PR)
+      - name: Update GitOps digest (selfTest direct push / main-master PR)
         if: github.ref_type == 'branch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -121,21 +121,37 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f scripts/gitops-bump-digest.py ]; then
-            echo "No scripts/gitops-bump-digest.py — skip PR"
+            echo "No scripts/gitops-bump-digest.py — skip digest update"
             exit 0
           fi
+
+          # 1) Update manifest with real image digest.
           python3 scripts/gitops-bump-digest.py
           if git diff --quiet; then
-            echo "GitOps overlay already matches digest; nothing to PR"
+            echo "GitOps overlay already matches digest; nothing to do"
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gitops/overlays/prod/kustomization.yaml
+          if [ "${GITHUB_REF_NAME}" = "selfTest" ]; then
+            # Argo tracks selfTest by default: commit directly so sync can pick up immediately.
+            git commit -m "chore(gitops): bump image digest [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            echo "Directly pushed digest update to ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+
+          # main/master: keep PR review flow.
           BRANCH="ci/gitops-digest-${{ github.run_id }}"
           git checkout -b "$BRANCH"
-          git add gitops/overlays/prod/kustomization.yaml
           git commit -m "chore(gitops): bump image digest [skip ci]"
           git push -u origin "$BRANCH"
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "::error::gh CLI not found on runner, cannot create PR"
+            exit 1
+          fi
           gh pr create \
             --base "${GITHUB_REF_NAME}" \
             --head "$BRANCH" \
