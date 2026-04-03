@@ -8,11 +8,13 @@ import org.jpos.iso.ISORequestListener;
 import org.jpos.iso.ISOSource;
 import org.jpos.template.crypto.CardPaymentCryptoService;
 import org.jpos.template.crypto.CardPaymentCryptoServices;
+import org.jpos.util.Log;
 
 /**
  * Demo 监听：Echo + 可选 APC 挂钩（入站 DE52 PIN / DE64 MAC）。未配置 {@code APC_*_KEY_ALIAS} 时与纯 Echo 行为一致。
  */
 public class AsciiEchoRequestListener implements ISORequestListener {
+    private static final Log LOG = Log.getLog("Q2", "iso.ascii-echo-listener");
 
     private final CardPaymentCryptoService crypto;
 
@@ -29,6 +31,30 @@ public class AsciiEchoRequestListener implements ISORequestListener {
         try {
             String pinAlias = trimEnv("APC_PIN_KEY_ALIAS");
             String macAlias = trimEnv("APC_MAC_KEY_ALIAS");
+            boolean apcConfigured = crypto.isApcConfigured();
+
+            LOG.info(
+                    "Received ISO request: mti="
+                            + valueOrDash(request.getMTI())
+                            + ", de3="
+                            + valueOrDash(request.getString(3))
+                            + ", de4="
+                            + valueOrDash(request.getString(4))
+                            + ", de11="
+                            + valueOrDash(request.getString(11))
+                            + ", de41="
+                            + valueOrDash(request.getString(41))
+                            + ", has52="
+                            + request.hasField(52)
+                            + ", has64="
+                            + request.hasField(64));
+            LOG.info(
+                    "APC key status: env.pin="
+                            + present(pinAlias)
+                            + ", env.mac="
+                            + present(macAlias)
+                            + ", service.isApcConfigured="
+                            + apcConfigured);
 
             if (pinAlias != null && request.hasField(52)) {
                 byte[] pinBlock = request.getBytes(52);
@@ -53,7 +79,7 @@ public class AsciiEchoRequestListener implements ISORequestListener {
             response.setResponseMTI();
             response.set(39, "00");
 
-            if (macAlias != null && crypto.isApcConfigured()) {
+            if (macAlias != null && apcConfigured) {
                 try {
                     byte[] macPayload = macCanonicalPayload(response);
                     byte[] macOut =
@@ -107,5 +133,13 @@ public class AsciiEchoRequestListener implements ISORequestListener {
         }
         v = v.trim();
         return v.isEmpty() ? null : v;
+    }
+
+    private static String valueOrDash(String value) {
+        return value == null || value.isBlank() ? "-" : value;
+    }
+
+    private static String present(String value) {
+        return value == null ? "absent" : "present";
     }
 }
