@@ -14,8 +14,8 @@ spec:
       labels:
         app: demo-app
     spec:
-      # Matches CDK EksGitOpsStack IRSA service account name
-      serviceAccountName: workload-ecr-pull
+      # Matches CDK EksGitOpsStack APC service account name
+      serviceAccountName: payment-crypto-workload
       containers:
         - name: app
           # Overridden in overlays/prod via kustomize images

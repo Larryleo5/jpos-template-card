@@ -1,19 +1,16 @@
-# 本文件用于放在「业务仓库」中，例如 GitHub 上的 jpos-template-card。
-# 勿放在仅部署 CDK 的仓库里（除非该仓库也要构建镜像）。
+# This file is intended for the business repository (for example, jpos-template-card on GitHub).
+# Do not place it in a CDK-only repository (unless that repo also builds images).
 #
-# 使用步骤：
-# 1) 将本文件复制到 jpos-template-card 仓库：.github/workflows/build-push-ecr.yml
-# 2) AWS CDK 部署时 githubImageRepo（或 githubRepo）必须与 jpos-template-card 一致，否则 OIDC 无法 AssumeRole
-# 3) 在 jpos-template-card 配置 Secrets / Variables（见 infra 仓库 docs/OPERATIONS.md）
+# Usage:
+# 1) Copy this file into the jpos-template-card repository: .github/workflows/build-push-ecr.yml
+# 2) During AWS CDK deployment, githubImageRepo (or githubRepo) must match jpos-template-card, otherwise OIDC assume-role will fail
+# 3) Configure Secrets / Variables in jpos-template-card (see infra repo docs/OPERATIONS.md)
 #
-# OIDC 信任：repo:ORG/jpos-template-card:ref:*（默认）或 CDK 中 githubRefExact 收紧
+# OIDC trust: repo:ORG/jpos-template-card:ref:* (default), or tighten with githubRefExact in CDK
 # Secrets: AWS_ROLE_TO_ASSUME (repository secret)
 # Variables: AWS_REGION, ECR_REPOSITORY_NAME (required)
-# Optional Variables for APC Secret sync:
-# - EKS_STACK_NAME (default EksGitOpsStack)
-# - PAYMENT_CRYPTO_STACK_NAME (default PaymentCryptoStack)
-# - APC_SECRET_NAMESPACE (default default)
-# - APC_SECRET_NAME (default apc-config)
+# APC runtime config is now synced by External Secrets from AWS Secrets Manager.
+# Business workflow no longer calls kubectl apply for apc-config.
 name: Build and push image to ECR
 
 on:
@@ -21,7 +18,7 @@ on:
     branches:
       - main
       - master
-      - selfTest # 仅推 :latest（不推 sha 标签，见下方 run 脚本）
+      - selfTest # Push :latest only (no SHA tag), see run script below
     tags:
       - 'v*'
     paths-ignore:
@@ -35,24 +32,24 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  # 可选：在官方把 Node 24 设为默认前，减少 Node 20 弃用噪音（与升级后的 action 二选一即可）
+  # Optional: before Node 24 becomes the default, reduce Node 20 deprecation noise (either this or upgraded actions)
   # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      # v6+ 使用较新 Node，避免 “Node.js 20 actions are deprecated” 针对 checkout 的告警
+      # v6+ uses newer Node runtime to avoid "Node.js 20 actions are deprecated" warnings for checkout
       - uses: actions/checkout@v6
 
       - name: Check required repository variables
         run: |
           if [ -z "${{ vars.AWS_REGION }}" ]; then
-            echo "::error::在仓库 Settings → Variables 中设置 AWS_REGION（与 ECR/EKS 区域一致）"
+            echo "::error::Set AWS_REGION in repository Settings → Variables (must match your ECR/EKS region)"
             exit 1
           fi
           if [ -z "${{ vars.ECR_REPOSITORY_NAME }}" ]; then
-            echo "::error::在仓库 Settings → Variables 中设置 ECR_REPOSITORY_NAME（与 CDK EcrStack 输出一致）"
+            echo "::error::Set ECR_REPOSITORY_NAME in repository Settings → Variables (must match CDK EcrStack output)"
             exit 1
           fi
 
@@ -101,7 +98,7 @@ jobs:
             echo "Also pushed :$REF_NAME"
           fi
 
-          # 需要 IAM ecr:DescribeImages（CDK GitHubOidcStack 推送角色已包含；勿删权限与脚本不同步）
+          # Requires IAM ecr:DescribeImages (already included in CDK GitHubOidcStack push role; keep policy and script in sync)
           DIGEST=$(aws ecr describe-images \
             --repository-name "$REPOSITORY" \
             --image-ids imageTag="$DIGEST_TAG" \
@@ -111,50 +108,6 @@ jobs:
           echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
           echo "IMAGE_NEW_NAME=$REGISTRY/$REPOSITORY" >> "$GITHUB_ENV"
           echo "Pushed $REGISTRY/$REPOSITORY@$DIGEST"
-
-      - name: Setup kubectl
-        if: github.ref_type == 'branch'
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.31.0
-
-      - name: Sync APC secret to EKS
-        if: github.ref_type == 'branch'
-        env:
-          EKS_STACK_NAME: ${{ vars.EKS_STACK_NAME }}
-          PAYMENT_CRYPTO_STACK_NAME: ${{ vars.PAYMENT_CRYPTO_STACK_NAME }}
-          APC_SECRET_NAMESPACE: ${{ vars.APC_SECRET_NAMESPACE }}
-          APC_SECRET_NAME: ${{ vars.APC_SECRET_NAME }}
-        run: |
-          set -euo pipefail
-          EKS_STACK_NAME="${EKS_STACK_NAME:-EksGitOpsStack}"
-          PAYMENT_CRYPTO_STACK_NAME="${PAYMENT_CRYPTO_STACK_NAME:-PaymentCryptoStack}"
-          APC_SECRET_NAMESPACE="${APC_SECRET_NAMESPACE:-default}"
-          APC_SECRET_NAME="${APC_SECRET_NAME:-apc-config}"
-
-          CLUSTER_NAME="$(aws cloudformation describe-stacks \
-            --stack-name "$EKS_STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue" \
-            --output text)"
-          PIN_KEY_ALIAS="$(aws cloudformation describe-stacks \
-            --stack-name "$PAYMENT_CRYPTO_STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='PaymentCryptographyPinKeyAlias'].OutputValue" \
-            --output text)"
-
-          test -n "$CLUSTER_NAME" && [ "$CLUSTER_NAME" != "None" ] || { echo "::error::ClusterName output not found in $EKS_STACK_NAME"; exit 1; }
-          test -n "$PIN_KEY_ALIAS" && [ "$PIN_KEY_ALIAS" != "None" ] || { echo "::error::PaymentCryptographyPinKeyAlias output not found in $PAYMENT_CRYPTO_STACK_NAME"; exit 1; }
-
-          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
-
-          kubectl create namespace "$APC_SECRET_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create secret generic "$APC_SECRET_NAME" \
-            -n "$APC_SECRET_NAMESPACE" \
-            --from-literal=APC_REGION="$AWS_REGION" \
-            --from-literal=APC_PIN_KEY_ALIAS="$PIN_KEY_ALIAS" \
-            --from-literal=APC_MAC_KEY_ALIAS="$PIN_KEY_ALIAS" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl get secret "$APC_SECRET_NAME" -n "$APC_SECRET_NAMESPACE" -o yaml > /dev/null
-          echo "APC secret synced: $APC_SECRET_NAMESPACE/$APC_SECRET_NAME (PIN alias: $PIN_KEY_ALIAS)"
 
       - name: Summary
         run: |
